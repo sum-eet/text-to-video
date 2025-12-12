@@ -2,36 +2,45 @@ import streamlit as st
 import os
 import shutil
 
-# --- SECURITY FIX FOR STREAMLIT CLOUD (MUST BE AT THE TOP) ---
-# ImageMagick's default policy on Linux blocks the "@" operator needed for text.
-# We create a local, unblocked policy file and tell ImageMagick to use it.
+# --- ROBUST SECURITY FIX FOR STREAMLIT CLOUD ---
+# (Must be at the very top of the file)
 if os.name == "posix":  # Only run on Linux (Streamlit Cloud)
-    # 1. Path to the restrictive system policy
-    system_policy = "/etc/ImageMagick-6/policy.xml"
-    local_policy = "policy.xml"
+    try:
+        # 1. Define locations
+        system_policy_path = "/etc/ImageMagick-6/policy.xml"
+        local_policy_path = os.path.join(os.getcwd(), "policy.xml")
 
-    # 2. Create a local unblocked policy
-    if not os.path.exists(local_policy):
-        if os.path.exists(system_policy):
-            with open(system_policy, "r") as f:
-                content = f.read()
-            # Comment out the specific line that blocks us
-            content = content.replace(
-                '<policy domain="path" rights="none" pattern="@*" />', ""
-            )
-            with open(local_policy, "w") as f:
-                f.write(content)
-        else:
-            # Fallback: Create a permissive policy from scratch if system one is missing
-            with open(local_policy, "w") as f:
-                f.write(
-                    '<policymap><policy domain="path" rights="read|write" pattern="@*" /></policymap>'
-                )
+        # 2. logical check: If we haven't already fixed it...
+        if not os.path.exists(local_policy_path):
+            if os.path.exists(system_policy_path):
+                with open(system_policy_path, "r") as f:
+                    lines = f.readlines()
 
-    # 3. Force ImageMagick to look in the current directory for the policy
-    os.environ["MAGICK_CONFIGURE_PATH"] = os.getcwd()
+                new_lines = []
+                for line in lines:
+                    # 3. The Smart Fix:
+                    # If line restricts "@" pattern, comment it out.
+                    if 'pattern="@*"' in line and 'rights="none"' in line:
+                        new_lines.append(f"\n")
+                    else:
+                        new_lines.append(line)
 
-# --- MAIN APP CODE STARTS HERE ---
+                with open(local_policy_path, "w") as f:
+                    f.writelines(new_lines)
+            else:
+                # Fallback if system path differs
+                with open(local_policy_path, "w") as f:
+                    f.write(
+                        '<policymap><policy domain="path" rights="read|write" pattern="@*" /></policymap>'
+                    )
+
+        # 4. Force ImageMagick to use OUR local policy file
+        os.environ["MAGICK_CONFIGURE_PATH"] = os.getcwd()
+
+    except Exception as e:
+        st.error(f"Security Patch Failed: {e}")
+
+# --- MAIN IMPORTS ---
 import moviepy.editor as mp
 from moviepy.config import change_settings
 from gtts import gTTS
@@ -120,6 +129,7 @@ def generate_video(text_input, font_path):
                 light_up_time = word_batch_index * SECONDS_PER_WORD
                 pos_y = start_y + (line_idx / WORDS_PER_LINE) * (w_height + LINE_GAP)
 
+                # Dim Word
                 dim_clip = (
                     mp.TextClip(
                         word_text, fontsize=FONT_SIZE, font=font_path, color="white"
@@ -129,6 +139,7 @@ def generate_video(text_input, font_path):
                     .set_opacity(0.25)
                 )
 
+                # Bright Word
                 bright_duration = batch_duration - light_up_time
                 if bright_duration > 0:
                     bright_clip = (
@@ -167,7 +178,6 @@ st.markdown("### 1. Enter Your Text")
 default_text = "Wealth is not about having a lot of money; it is about having a lot of options.\nSpecific knowledge cannot be taught, but it can be learned."
 user_text = st.text_area("Paste your script here:", value=default_text, height=150)
 
-# Detect Custom Font
 repo_font_path = "Anatoleum.ttf"
 if os.path.exists(repo_font_path):
     st.info(f"✅ Using Brand Font: {repo_font_path}")
