@@ -1,62 +1,25 @@
 import streamlit as st
 import os
 import shutil
-
-# --- ROBUST SECURITY FIX FOR STREAMLIT CLOUD ---
-# (Must be at the very top of the file)
-if os.name == "posix":  # Only run on Linux (Streamlit Cloud)
-    try:
-        # 1. Define locations
-        system_policy_path = "/etc/ImageMagick-6/policy.xml"
-        local_policy_path = os.path.join(os.getcwd(), "policy.xml")
-
-        # 2. logical check: If we haven't already fixed it...
-        if not os.path.exists(local_policy_path):
-            if os.path.exists(system_policy_path):
-                with open(system_policy_path, "r") as f:
-                    lines = f.readlines()
-
-                new_lines = []
-                for line in lines:
-                    # 3. The Smart Fix:
-                    # If line restricts "@" pattern, comment it out.
-                    if 'pattern="@*"' in line and 'rights="none"' in line:
-                        new_lines.append(f"\n")
-                    else:
-                        new_lines.append(line)
-
-                with open(local_policy_path, "w") as f:
-                    f.writelines(new_lines)
-            else:
-                # Fallback if system path differs
-                with open(local_policy_path, "w") as f:
-                    f.write(
-                        '<policymap><policy domain="path" rights="read|write" pattern="@*" /></policymap>'
-                    )
-
-        # 4. Force ImageMagick to use OUR local policy file
-        os.environ["MAGICK_CONFIGURE_PATH"] = os.getcwd()
-
-    except Exception as e:
-        st.error(f"Security Patch Failed: {e}")
-
-# --- MAIN IMPORTS ---
 import moviepy.editor as mp
 from moviepy.config import change_settings
 from gtts import gTTS
 import tempfile
 
-# Force binary path for Linux
-if os.name == "posix":
-    change_settings({"IMAGEMAGICK_BINARY": "/usr/bin/convert"})
-
+# --- CONFIGURATION ---
 st.set_page_config(page_title="Text-to-Video SaaS", page_icon="🎥", layout="centered")
+
+# 1. FORCE LINUX TO USE YOUR LOCAL POLICY.XML
+# This tells ImageMagick: "Look in the current folder for config files first"
+if os.name == "posix":
+    os.environ["MAGICK_CONFIGURE_PATH"] = os.getcwd()
+    change_settings({"IMAGEMAGICK_BINARY": "/usr/bin/convert"})
 
 st.title("⚡ Text to Viral Video")
 st.write("Turn your text into a kinetic video instantly.")
 
 
-# --- THE GENERATOR ENGINE ---
+# --- GENERATOR ENGINE ---
 def generate_video(text_input, font_path):
     temp_dir = tempfile.mkdtemp()
     audio_path = os.path.join(temp_dir, "temp_audio.mp3")
@@ -78,7 +41,10 @@ def generate_video(text_input, font_path):
     # Video Settings
     VIDEO_SIZE = (1920, 1200)
     FONT_SIZE = 130
+    # Use standard white/black
     COLOR_BRIGHT = "white"
+
+    # Layout Config
     WORD_GAP = 35
     LINE_GAP = 50
     WORDS_PER_LINE = 3
@@ -87,17 +53,15 @@ def generate_video(text_input, font_path):
     LEFT_MARGIN = 150
 
     final_clips = []
-
     progress_bar = st.progress(0)
     total_chunks = len(range(0, len(words), WORDS_PER_SCREEN))
 
-    # --- GENERATION LOOP ---
+    # --- RENDER LOOP ---
     for idx, chunk_index in enumerate(range(0, len(words), WORDS_PER_SCREEN)):
         batch_words = words[chunk_index : chunk_index + WORDS_PER_SCREEN]
         batch_duration = len(batch_words) * SECONDS_PER_WORD
 
         screen_clips = []
-
         bg_clip = mp.ColorClip(size=VIDEO_SIZE, color=(0, 0, 0)).set_duration(
             batch_duration
         )
@@ -112,18 +76,29 @@ def generate_video(text_input, font_path):
             line_words = batch_words[line_idx : line_idx + WORDS_PER_LINE]
             current_x = LEFT_MARGIN
 
+            # 1. Measure Words
             word_clips_data = []
             for w in line_words:
                 try:
+                    # Using 'transparent' background is safer for text rendering
                     temp_clip = mp.TextClip(
-                        w, fontsize=FONT_SIZE, font=font_path, color="white"
+                        w,
+                        fontsize=FONT_SIZE,
+                        font=font_path,
+                        color="white",
+                        bg_color="transparent",
                     )
                 except Exception:
                     temp_clip = mp.TextClip(
-                        w, fontsize=FONT_SIZE, font="Liberation-Sans", color="white"
+                        w,
+                        fontsize=FONT_SIZE,
+                        font="Liberation-Sans",
+                        color="white",
+                        bg_color="transparent",
                     )
                 word_clips_data.append((w, temp_clip.w, temp_clip.h))
 
+            # 2. Place Words
             for i, (word_text, w_width, w_height) in enumerate(word_clips_data):
                 word_batch_index = line_idx + i
                 light_up_time = word_batch_index * SECONDS_PER_WORD
@@ -132,7 +107,11 @@ def generate_video(text_input, font_path):
                 # Dim Word
                 dim_clip = (
                     mp.TextClip(
-                        word_text, fontsize=FONT_SIZE, font=font_path, color="white"
+                        word_text,
+                        fontsize=FONT_SIZE,
+                        font=font_path,
+                        color="white",
+                        bg_color="transparent",
                     )
                     .set_position((current_x, pos_y))
                     .set_duration(batch_duration)
@@ -144,7 +123,11 @@ def generate_video(text_input, font_path):
                 if bright_duration > 0:
                     bright_clip = (
                         mp.TextClip(
-                            word_text, fontsize=FONT_SIZE, font=font_path, color="white"
+                            word_text,
+                            fontsize=FONT_SIZE,
+                            font=font_path,
+                            color="white",
+                            bg_color="transparent",
                         )
                         .set_position((current_x, pos_y))
                         .set_start(light_up_time)
@@ -173,7 +156,7 @@ def generate_video(text_input, font_path):
     return None
 
 
-# --- FRONTEND UI ---
+# --- UI ---
 st.markdown("### 1. Enter Your Text")
 default_text = "Wealth is not about having a lot of money; it is about having a lot of options.\nSpecific knowledge cannot be taught, but it can be learned."
 user_text = st.text_area("Paste your script here:", value=default_text, height=150)
