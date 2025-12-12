@@ -1,22 +1,49 @@
 import streamlit as st
 import os
-import shutil
+import numpy as np
 import moviepy.editor as mp
-from moviepy.config import change_settings
 from gtts import gTTS
 import tempfile
+from PIL import Image, ImageDraw, ImageFont
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Text-to-Video SaaS", page_icon="🎥", layout="centered")
 
-# 1. FORCE LINUX TO USE YOUR LOCAL POLICY.XML
-# This tells ImageMagick: "Look in the current folder for config files first"
-if os.name == "posix":
-    os.environ["MAGICK_CONFIGURE_PATH"] = os.getcwd()
-    change_settings({"IMAGEMAGICK_BINARY": "/usr/bin/convert"})
-
-st.title("⚡ Text to Viral Video")
+st.title("⚡ Text to Viral Video (No-ImageMagick Version)")
 st.write("Turn your text into a kinetic video instantly.")
+
+
+# --- HELPER: DRAW TEXT WITH PIL (BYPASSES IMAGEMAGICK) ---
+def create_pil_text_clip(text, font_path, font_size, color, size):
+    """
+    Creates a MoviePy ImageClip using standard Python libraries (PIL).
+    This avoids the ImageMagick security policy error entirely.
+    """
+    # 1. Create a transparent image
+    img = Image.new("RGBA", size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # 2. Load Font
+    try:
+        font = ImageFont.truetype(font_path, font_size)
+    except IOError:
+        # Fallback to default if custom font fails
+        font = ImageFont.load_default()
+
+    # 3. Calculate Text Size to center it locally (if needed) or just draw
+    # Note: textbbox is the modern way to get size in PIL
+    left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
+    text_w, text_h = right - left, bottom - top
+
+    # 4. Draw Text
+    # We draw at (0,0) because we will position the clip in MoviePy
+    # But we need the image to be big enough to hold the text
+    txt_img = Image.new("RGBA", (text_w + 20, text_h + 20), (0, 0, 0, 0))
+    draw_txt = ImageDraw.Draw(txt_img)
+    draw_txt.text((0, 0), text, font=font, fill=color)
+
+    # 5. Convert to Numpy Array for MoviePy
+    return mp.ImageClip(np.array(txt_img))
 
 
 # --- GENERATOR ENGINE ---
@@ -41,8 +68,6 @@ def generate_video(text_input, font_path):
     # Video Settings
     VIDEO_SIZE = (1920, 1200)
     FONT_SIZE = 130
-    # Use standard white/black
-    COLOR_BRIGHT = "white"
 
     # Layout Config
     WORD_GAP = 35
@@ -62,11 +87,16 @@ def generate_video(text_input, font_path):
         batch_duration = len(batch_words) * SECONDS_PER_WORD
 
         screen_clips = []
+
+        # Black Background
         bg_clip = mp.ColorClip(size=VIDEO_SIZE, color=(0, 0, 0)).set_duration(
             batch_duration
         )
         screen_clips.append(bg_clip)
 
+        # Calculate Vertical Center
+        # Estimating height manually since we aren't using TextClip metrics same way
+        # 1.2 is a rough line-height multiplier
         total_block_height = (LINES_PER_SCREEN * (FONT_SIZE * 1.2)) + (
             (LINES_PER_SCREEN - 1) * LINE_GAP
         )
@@ -76,63 +106,38 @@ def generate_video(text_input, font_path):
             line_words = batch_words[line_idx : line_idx + WORDS_PER_LINE]
             current_x = LEFT_MARGIN
 
-            # 1. Measure Words
+            # 1. Measure & Create Clips using PIL
             word_clips_data = []
             for w in line_words:
-                try:
-                    # Using 'transparent' background is safer for text rendering
-                    temp_clip = mp.TextClip(
-                        w,
-                        fontsize=FONT_SIZE,
-                        font=font_path,
-                        color="white",
-                        bg_color="transparent",
-                    )
-                except Exception:
-                    temp_clip = mp.TextClip(
-                        w,
-                        fontsize=FONT_SIZE,
-                        font="Liberation-Sans",
-                        color="white",
-                        bg_color="transparent",
-                    )
-                word_clips_data.append((w, temp_clip.w, temp_clip.h))
+                # Create the clip using our helper function
+                # We pass VIDEO_SIZE just for reference, but the clip is sized to the text
+                clip = create_pil_text_clip(
+                    w, font_path, FONT_SIZE, "white", VIDEO_SIZE
+                )
+                word_clips_data.append((w, clip, clip.w, clip.h))
 
             # 2. Place Words
-            for i, (word_text, w_width, w_height) in enumerate(word_clips_data):
+            for i, (word_text, clip, w_width, w_height) in enumerate(word_clips_data):
                 word_batch_index = line_idx + i
                 light_up_time = word_batch_index * SECONDS_PER_WORD
                 pos_y = start_y + (line_idx / WORDS_PER_LINE) * (w_height + LINE_GAP)
 
-                # Dim Word
+                # Dim Word (Opacity 0.25)
                 dim_clip = (
-                    mp.TextClip(
-                        word_text,
-                        fontsize=FONT_SIZE,
-                        font=font_path,
-                        color="white",
-                        bg_color="transparent",
-                    )
-                    .set_position((current_x, pos_y))
+                    clip.set_position((current_x, pos_y))
                     .set_duration(batch_duration)
                     .set_opacity(0.25)
                 )
 
-                # Bright Word
+                # Bright Word (Opacity 1.0)
                 bright_duration = batch_duration - light_up_time
                 if bright_duration > 0:
                     bright_clip = (
-                        mp.TextClip(
-                            word_text,
-                            fontsize=FONT_SIZE,
-                            font=font_path,
-                            color="white",
-                            bg_color="transparent",
-                        )
-                        .set_position((current_x, pos_y))
+                        clip.set_position((current_x, pos_y))
                         .set_start(light_up_time)
                         .set_duration(bright_duration)
                     )
+
                     screen_clips.append(dim_clip)
                     screen_clips.append(bright_clip)
                 else:
@@ -167,11 +172,11 @@ if os.path.exists(repo_font_path):
     active_font = repo_font_path
 else:
     st.warning(f"⚠️ {repo_font_path} not found. Using default system font.")
-    active_font = "Liberation-Sans-Narrow"
+    active_font = "arial.ttf"  # Fallback
 
 if st.button("🚀 Generate Video"):
     if user_text:
-        with st.spinner("Rendering... This usually takes 15-30 seconds."):
+        with st.spinner("Rendering..."):
             try:
                 output_file = generate_video(user_text, active_font)
                 st.success("Video Ready!")
