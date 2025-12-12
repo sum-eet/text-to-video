@@ -1,197 +1,3 @@
-# import streamlit as st
-# import os
-# import numpy as np
-# import moviepy.editor as mp
-# from gtts import gTTS
-# import tempfile
-# from PIL import Image, ImageDraw, ImageFont
-
-# # --- CONFIGURATION ---
-# st.set_page_config(page_title="Text-to-Video SaaS", page_icon="🎥", layout="centered")
-
-# st.title("⚡ Text to Viral Video (No-ImageMagick Version)")
-# st.write("Turn your text into a kinetic video instantly.")
-
-
-# # --- HELPER: DRAW TEXT WITH PIL (BYPASSES IMAGEMAGICK) ---
-# def create_pil_text_clip(text, font_path, font_size, color, size):
-#     """
-#     Creates a MoviePy ImageClip using standard Python libraries (PIL).
-#     This avoids the ImageMagick security policy error entirely.
-#     """
-#     # 1. Create a transparent image
-#     img = Image.new("RGBA", size, (0, 0, 0, 0))
-#     draw = ImageDraw.Draw(img)
-
-#     # 2. Load Font
-#     try:
-#         font = ImageFont.truetype(font_path, font_size)
-#     except IOError:
-#         # Fallback to default if custom font fails
-#         font = ImageFont.load_default()
-
-#     # 3. Calculate Text Size to center it locally (if needed) or just draw
-#     # Note: textbbox is the modern way to get size in PIL
-#     left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
-#     text_w, text_h = right - left, bottom - top
-
-#     # 4. Draw Text
-#     # We draw at (0,0) because we will position the clip in MoviePy
-#     # But we need the image to be big enough to hold the text
-#     txt_img = Image.new("RGBA", (text_w + 20, text_h + 20), (0, 0, 0, 0))
-#     draw_txt = ImageDraw.Draw(txt_img)
-#     draw_txt.text((0, 0), text, font=font, fill=color)
-
-#     # 5. Convert to Numpy Array for MoviePy
-#     return mp.ImageClip(np.array(txt_img))
-
-
-# # --- GENERATOR ENGINE ---
-# def generate_video(text_input, font_path):
-#     temp_dir = tempfile.mkdtemp()
-#     audio_path = os.path.join(temp_dir, "temp_audio.mp3")
-#     output_path = os.path.join(temp_dir, "output_video.mp4")
-
-#     # Generate Audio
-#     clean_text = text_input.replace("\n", " ").strip()
-#     tts = gTTS(clean_text, lang="en")
-#     tts.save(audio_path)
-
-#     # Calculate Timing
-#     audio_clip = mp.AudioFileClip(audio_path)
-#     audio_duration = audio_clip.duration
-#     words = clean_text.split()
-#     if len(words) == 0:
-#         return None
-#     SECONDS_PER_WORD = audio_duration / len(words)
-
-#     # Video Settings
-#     VIDEO_SIZE = (1920, 1200)
-#     FONT_SIZE = 130
-
-#     # Layout Config
-#     WORD_GAP = 35
-#     LINE_GAP = 50
-#     WORDS_PER_LINE = 3
-#     LINES_PER_SCREEN = 4
-#     WORDS_PER_SCREEN = 12
-#     LEFT_MARGIN = 150
-
-#     final_clips = []
-#     progress_bar = st.progress(0)
-#     total_chunks = len(range(0, len(words), WORDS_PER_SCREEN))
-
-#     # --- RENDER LOOP ---
-#     for idx, chunk_index in enumerate(range(0, len(words), WORDS_PER_SCREEN)):
-#         batch_words = words[chunk_index : chunk_index + WORDS_PER_SCREEN]
-#         batch_duration = len(batch_words) * SECONDS_PER_WORD
-
-#         screen_clips = []
-
-#         # Black Background
-#         bg_clip = mp.ColorClip(size=VIDEO_SIZE, color=(0, 0, 0)).set_duration(
-#             batch_duration
-#         )
-#         screen_clips.append(bg_clip)
-
-#         # Calculate Vertical Center
-#         # Estimating height manually since we aren't using TextClip metrics same way
-#         # 1.2 is a rough line-height multiplier
-#         total_block_height = (LINES_PER_SCREEN * (FONT_SIZE * 1.2)) + (
-#             (LINES_PER_SCREEN - 1) * LINE_GAP
-#         )
-#         start_y = (VIDEO_SIZE[1] - total_block_height) / 2
-
-#         for line_idx in range(0, len(batch_words), WORDS_PER_LINE):
-#             line_words = batch_words[line_idx : line_idx + WORDS_PER_LINE]
-#             current_x = LEFT_MARGIN
-
-#             # 1. Measure & Create Clips using PIL
-#             word_clips_data = []
-#             for w in line_words:
-#                 # Create the clip using our helper function
-#                 # We pass VIDEO_SIZE just for reference, but the clip is sized to the text
-#                 clip = create_pil_text_clip(
-#                     w, font_path, FONT_SIZE, "white", VIDEO_SIZE
-#                 )
-#                 word_clips_data.append((w, clip, clip.w, clip.h))
-
-#             # 2. Place Words
-#             for i, (word_text, clip, w_width, w_height) in enumerate(word_clips_data):
-#                 word_batch_index = line_idx + i
-#                 light_up_time = word_batch_index * SECONDS_PER_WORD
-#                 pos_y = start_y + (line_idx / WORDS_PER_LINE) * (w_height + LINE_GAP)
-
-#                 # Dim Word (Opacity 0.25)
-#                 dim_clip = (
-#                     clip.set_position((current_x, pos_y))
-#                     .set_duration(batch_duration)
-#                     .set_opacity(0.25)
-#                 )
-
-#                 # Bright Word (Opacity 1.0)
-#                 bright_duration = batch_duration - light_up_time
-#                 if bright_duration > 0:
-#                     bright_clip = (
-#                         clip.set_position((current_x, pos_y))
-#                         .set_start(light_up_time)
-#                         .set_duration(bright_duration)
-#                     )
-
-#                     screen_clips.append(dim_clip)
-#                     screen_clips.append(bright_clip)
-#                 else:
-#                     screen_clips.append(dim_clip)
-
-#                 current_x += w_width + WORD_GAP
-
-#         screen_composite = mp.CompositeVideoClip(
-#             screen_clips, size=VIDEO_SIZE
-#         ).set_duration(batch_duration)
-#         final_clips.append(screen_composite)
-
-#         if total_chunks > 0:
-#             progress_bar.progress(min((idx + 1) / total_chunks, 1.0))
-
-#     if final_clips:
-#         final_video = mp.concatenate_videoclips(final_clips)
-#         final_video = final_video.set_audio(audio_clip)
-#         final_video.write_videofile(output_path, fps=24, audio_codec="aac")
-#         return output_path
-#     return None
-
-
-# # --- UI ---
-# st.markdown("### 1. Enter Your Text")
-# default_text = "Wealth is not about having a lot of money; it is about having a lot of options.\nSpecific knowledge cannot be taught, but it can be learned."
-# user_text = st.text_area("Paste your script here:", value=default_text, height=150)
-
-# repo_font_path = "Anatoleum.ttf"
-# if os.path.exists(repo_font_path):
-#     st.info(f"✅ Using Brand Font: {repo_font_path}")
-#     active_font = repo_font_path
-# else:
-#     st.warning(f"⚠️ {repo_font_path} not found. Using default system font.")
-#     active_font = "arial.ttf"  # Fallback
-
-# if st.button("🚀 Generate Video"):
-#     if user_text:
-#         with st.spinner("Rendering..."):
-#             try:
-#                 output_file = generate_video(user_text, active_font)
-#                 st.success("Video Ready!")
-#                 st.video(output_file)
-#                 with open(output_file, "rb") as file:
-#                     st.download_button(
-#                         "Download MP4",
-#                         data=file,
-#                         file_name="viral_video.mp4",
-#                         mime="video/mp4",
-#                     )
-#             except Exception as e:
-#                 st.error(f"Error: {e}")
-#     else:
-#         st.warning("Please enter some text.")
 import streamlit as st
 import os
 import numpy as np
@@ -202,7 +8,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 # --- PAGE CONFIG ---
 st.set_page_config(
-    page_title="TypeHype | Viral Video Generator",
+    page_title="JIGGYMAX | Viral Video Generator",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -221,7 +27,7 @@ def go_to_home():
     st.session_state.page = "home"
 
 
-# --- 1. LANDING PAGE (UNCHANGED) ---
+# --- 1. LANDING PAGE (JIGGYMAX BRANDING) ---
 def render_landing_page():
     st.markdown(
         """
@@ -246,11 +52,14 @@ def render_landing_page():
             }
 
             .hero-container { min-height: 85vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
-            h1 { font-size: clamp(3rem, 8vw, 6rem); font-weight: 800; background: linear-gradient(to right, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 20px;}
+            h1 { font-size: clamp(3rem, 8vw, 7rem); font-weight: 800; background: linear-gradient(to right, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 20px; line-height: 1;}
             p { font-size: 1.25rem; color: #94a3b8; max-width: 600px; margin-bottom: 40px; }
             .badge { background: rgba(255,255,255,0.1); padding: 8px 16px; border-radius: 50px; border: 1px solid rgba(255,255,255,0.2); margin-bottom: 20px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: #a5b4fc; }
             
             .glass-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; padding: 30px; backdrop-filter: blur(20px); }
+            
+            /* JIGGYMAX FOOTER */
+            .custom-footer { width: 100%; padding: 40px 20px; text-align: center; color: #525252; font-size: 0.9rem; border-top: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); }
         </style>
         <div class="blob-cont"><div class="blob blob-1"></div><div class="blob blob-2"></div></div>
     """,
@@ -262,9 +71,9 @@ def render_landing_page():
         st.markdown(
             """
             <div class="hero-container">
-                <div class="badge">✨ v2.0 Overflow Fix</div>
-                <h1>Turn text into <br> kinetic art.</h1>
-                <p>Stop editing word-by-word. TypeHype automatically syncs your script and adjusts layouts instantly.</p>
+                <div class="badge">✨ JIGGYMAX v1.0</div>
+                <h1>TEXT TO <br> VIDEO.</h1>
+                <p>JIGGYMAX turns boring scripts into viral kinetic typography. <br>Auto-synced. Auto-styled. Ready to ship.</p>
             </div>
         """,
             unsafe_allow_html=True,
@@ -276,8 +85,18 @@ def render_landing_page():
                 go_to_tool()
                 st.rerun()
 
+    # FOOTER
+    st.markdown(
+        """
+        <div class="custom-footer">
+            <p>&copy; 2025 JIGGYMAX. All rights reserved.</p>
+        </div>
+    """,
+        unsafe_allow_html=True,
+    )
 
-# --- 2. THE TOOL LOGIC (FIXED) ---
+
+# --- 2. THE TOOL LOGIC (REALISTIC LOADER) ---
 
 
 def get_font_object(font_path, size):
@@ -295,27 +114,18 @@ def measure_text_width(text, font):
 
 
 def create_pil_text_clip(text, font_path, font_size, color):
-    """Generates the image for a single word."""
     font = get_font_object(font_path, font_size)
     img = Image.new("RGBA", (1, 1))
     draw = ImageDraw.Draw(img)
-
-    # Measure
     left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
     text_w = right - left
     text_h = bottom - top
-
-    # Draw (add padding to prevent cutting off ascenders/descenders)
-    # 1.3 height factor is safer for fonts like Anatoleum
     final_h = int(text_h * 1.5)
     final_w = int(text_w * 1.1)
-
     txt_img = Image.new("RGBA", (final_w, final_h), (0, 0, 0, 0))
     draw_txt = ImageDraw.Draw(txt_img)
-    # Center vertically
     y_pos = (final_h - text_h) // 2
     draw_txt.text((0, y_pos), text, font=font, fill=color)
-
     return mp.ImageClip(np.array(txt_img)), final_w, final_h
 
 
@@ -335,13 +145,11 @@ def generate_video(text_input, font_path):
         return None
     SECONDS_PER_WORD = audio_duration / len(words)
 
-    # --- LAYOUT CONSTANTS ---
     VIDEO_W, VIDEO_H = 1920, 1200
     BASE_FONT_SIZE = 130
     LEFT_MARGIN = 150
     RIGHT_MARGIN = 150
     MAX_TEXT_WIDTH = VIDEO_W - (LEFT_MARGIN + RIGHT_MARGIN)
-
     WORD_GAP = 35
     LINE_GAP = 40
     WORDS_PER_LINE = 3
@@ -349,7 +157,12 @@ def generate_video(text_input, font_path):
     WORDS_PER_SCREEN = WORDS_PER_LINE * LINES_PER_SCREEN
 
     final_clips = []
+
+    # --- LOADER UI SETUP ---
+    # We use a progress bar and a status text that updates
     progress_bar = st.progress(0)
+    status_text = st.empty()
+
     total_chunks = len(range(0, len(words), WORDS_PER_SCREEN))
 
     # --- RENDER LOOP ---
@@ -357,41 +170,33 @@ def generate_video(text_input, font_path):
         batch_words = words[chunk_index : chunk_index + WORDS_PER_SCREEN]
         batch_duration = len(batch_words) * SECONDS_PER_WORD
 
+        # Update Status
+        status_text.text(f"Generating Scene {idx+1} of {total_chunks}...")
+
         screen_clips = []
         bg_clip = mp.ColorClip(size=(VIDEO_W, VIDEO_H), color=(0, 0, 0)).set_duration(
             batch_duration
         )
         screen_clips.append(bg_clip)
 
-        # 1. CALCULATE LAYOUT DYNAMICALLY
-        # We need to know the total height of this block to center it vertically.
-        # But font size might change per line! So we must calculate first.
-
-        lines_data = []  # Stores list of (word_text, clip, w, h) for each line
+        lines_data = []
         total_block_height = 0
 
         for line_idx in range(0, len(batch_words), WORDS_PER_LINE):
             line_words = batch_words[line_idx : line_idx + WORDS_PER_LINE]
-
-            # --- OVERFLOW PROTECTION ALGORITHM ---
-            # Try with BASE_FONT_SIZE. If too wide, shrink.
             current_font_size = BASE_FONT_SIZE
             line_fits = False
-
             while not line_fits and current_font_size > 40:
-                # Measure total width of this line
                 temp_font = get_font_object(font_path, current_font_size)
                 total_w = 0
                 for w in line_words:
                     total_w += measure_text_width(w, temp_font)
                 total_w += (len(line_words) - 1) * WORD_GAP
-
                 if total_w < MAX_TEXT_WIDTH:
                     line_fits = True
                 else:
-                    current_font_size -= 10  # Shrink step
+                    current_font_size -= 10
 
-            # Now generate clips with the safe font size
             line_clips = []
             max_h = 0
             for w in line_words:
@@ -401,37 +206,25 @@ def generate_video(text_input, font_path):
                 line_clips.append((w, clip, w_w, w_h))
                 if w_h > max_h:
                     max_h = w_h
-
-            lines_data.append(
-                {"clips": line_clips, "height": max_h}  # List of (text, clip, w, h)
-            )
+            lines_data.append({"clips": line_clips, "height": max_h})
             total_block_height += max_h
 
-        # Add gaps to total height
         if len(lines_data) > 1:
             total_block_height += (len(lines_data) - 1) * LINE_GAP
 
-        # 2. RENDER THE CLIPS
         start_y = (VIDEO_H - total_block_height) / 2
-
         current_y = start_y
-        global_word_idx = 0  # Track which word we are on in this batch
+        global_word_idx = 0
 
         for line_data in lines_data:
             current_x = LEFT_MARGIN
-
             for w_text, clip, w_w, w_h in line_data["clips"]:
-                # Timing
                 light_up_time = global_word_idx * SECONDS_PER_WORD
-
-                # Dim Clip
                 dim_clip = (
                     clip.set_position((current_x, current_y))
                     .set_duration(batch_duration)
                     .set_opacity(0.25)
                 )
-
-                # Bright Clip
                 bright_duration = batch_duration - light_up_time
                 if bright_duration > 0:
                     bright_clip = (
@@ -443,10 +236,8 @@ def generate_video(text_input, font_path):
                     screen_clips.append(bright_clip)
                 else:
                     screen_clips.append(dim_clip)
-
                 current_x += w_w + WORD_GAP
                 global_word_idx += 1
-
             current_y += line_data["height"] + LINE_GAP
 
         screen_composite = mp.CompositeVideoClip(
@@ -454,13 +245,33 @@ def generate_video(text_input, font_path):
         ).set_duration(batch_duration)
         final_clips.append(screen_composite)
 
-        if total_chunks > 0:
-            progress_bar.progress(min((idx + 1) / total_chunks, 1.0))
+        # REALISTIC PROGRESS:
+        # Map the frame generation loop from 0% to 80% (0.0 -> 0.8)
+        # We leave the last 20% for the actual encoding
+        loop_progress = (idx + 1) / total_chunks
+        scaled_progress = min(loop_progress * 0.8, 0.8)
+        progress_bar.progress(scaled_progress)
 
     if final_clips:
+        # --- ENCODING PHASE ---
+        # This is where the app used to "freeze" at 100%.
+        # Now it sits at 80% and moves to 90%, giving feedback.
+        status_text.text("Merging scenes and syncing audio...")
+        progress_bar.progress(0.85)
+
         final_video = mp.concatenate_videoclips(final_clips)
         final_video = final_video.set_audio(audio_clip)
-        final_video.write_videofile(output_path, fps=24, audio_codec="aac")
+
+        status_text.text("Encoding final MP4 (This takes a few seconds)...")
+        progress_bar.progress(0.90)
+
+        final_video.write_videofile(
+            output_path, fps=24, audio_codec="aac", logger=None
+        )  # logger=None to keep console clean
+
+        # DONE
+        progress_bar.progress(1.0)
+        status_text.success("Complete!")
         return output_path
     return None
 
@@ -477,7 +288,7 @@ def render_tool_page():
             go_to_home()
             st.rerun()
     with col_title:
-        st.markdown("## 🎥 Studio")
+        st.markdown("## ⚡ JIGGYMAX Studio")
     st.divider()
 
     col1, col2 = st.columns([2, 1])
@@ -498,12 +309,12 @@ def render_tool_page():
 
         if st.button("🚀 Generate Video", type="primary", use_container_width=True):
             if user_text:
-                with st.spinner("Rendering (Auto-Scaling)..."):
-                    try:
-                        output_file = generate_video(user_text, active_font)
-                        st.session_state["last_video"] = output_file
-                    except Exception as e:
-                        st.error(f"Error: {e}")
+                # We remove st.spinner here because we have a custom progress bar now
+                try:
+                    output_file = generate_video(user_text, active_font)
+                    st.session_state["last_video"] = output_file
+                except Exception as e:
+                    st.error(f"Error: {e}")
             else:
                 st.warning("Please enter some text.")
 
@@ -517,7 +328,7 @@ def render_tool_page():
                 st.download_button(
                     "Download MP4",
                     data=file,
-                    file_name="typehype_video.mp4",
+                    file_name="jiggymax_video.mp4",
                     mime="video/mp4",
                     use_container_width=True,
                 )
