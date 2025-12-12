@@ -208,7 +208,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# --- NAVIGATION STATE MANAGEMENT ---
+# --- NAVIGATION STATE ---
 if "page" not in st.session_state:
     st.session_state.page = "home"
 
@@ -221,48 +221,23 @@ def go_to_home():
     st.session_state.page = "home"
 
 
-# --- 1. THE SEXY LANDING PAGE (HTML/CSS INJECTION) ---
+# --- 1. LANDING PAGE (UNCHANGED) ---
 def render_landing_page():
-    # This CSS hides the default Streamlit elements (header, hamburger menu, footer)
-    # and injects the high-end landing page styles.
     st.markdown(
         """
         <style>
-            /* HIDE STREAMLIT UI */
             #MainMenu {visibility: hidden;}
             header {visibility: hidden;}
             footer {visibility: hidden;}
-            .block-container {padding-top: 0rem; padding-bottom: 0rem; padding-left: 0rem; padding-right: 0rem; max-width: 100%;}
+            .block-container {padding: 0; max-width: 100%;}
+            body { background-color: #050505; color: white; font-family: 'Inter', sans-serif; }
             
-            /* MODERN RESET & FONTS */
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
-            
-            body {
-                background-color: #050505;
-                font-family: 'Inter', sans-serif;
-                color: white;
-                overflow-x: hidden;
-            }
-
-            /* ANIMATED BACKGROUND BLOBS */
-            .blob-cont {
-                position: fixed;
-                top: 0; left: 0; width: 100vw; height: 100vh;
-                z-index: -1;
-                overflow: hidden;
-                background: #050505;
-            }
-            .blob {
-                position: absolute;
-                border-radius: 50%;
-                filter: blur(80px);
-                opacity: 0.6;
-                animation: float 10s infinite ease-in-out;
-            }
-            .blob-1 { background: #4f46e5; width: 600px; height: 600px; top: -100px; left: -100px; animation-delay: 0s; }
+            /* BACKGROUND ANIMATION */
+            .blob-cont { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1; overflow: hidden; background: #050505; }
+            .blob { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.6; animation: float 10s infinite ease-in-out; }
+            .blob-1 { background: #4f46e5; width: 600px; height: 600px; top: -100px; left: -100px; }
             .blob-2 { background: #ec4899; width: 500px; height: 500px; bottom: -100px; right: -100px; animation-delay: 2s; }
-            .blob-3 { background: #8b5cf6; width: 400px; height: 400px; top: 40%; left: 40%; animation-delay: 4s; opacity: 0.4; }
-
+            
             @keyframes float {
                 0% { transform: translate(0, 0) scale(1); }
                 33% { transform: translate(30px, -50px) scale(1.1); }
@@ -270,158 +245,78 @@ def render_landing_page():
                 100% { transform: translate(0, 0) scale(1); }
             }
 
-            /* HERO SECTION */
-            .hero-container {
-                height: 100vh;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                align-items: center;
-                text-align: center;
-                padding: 20px;
-                position: relative;
-            }
+            .hero-container { min-height: 85vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+            h1 { font-size: clamp(3rem, 8vw, 6rem); font-weight: 800; background: linear-gradient(to right, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 20px;}
+            p { font-size: 1.25rem; color: #94a3b8; max-width: 600px; margin-bottom: 40px; }
+            .badge { background: rgba(255,255,255,0.1); padding: 8px 16px; border-radius: 50px; border: 1px solid rgba(255,255,255,0.2); margin-bottom: 20px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: #a5b4fc; }
             
-            .badge {
-                background: rgba(255, 255, 255, 0.1);
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                padding: 8px 16px;
-                border-radius: 50px;
-                font-size: 0.8rem;
-                letter-spacing: 1px;
-                text-transform: uppercase;
-                margin-bottom: 24px;
-                backdrop-filter: blur(10px);
-                color: #a5b4fc;
-            }
-
-            h1 {
-                font-size: 5rem;
-                font-weight: 800;
-                line-height: 1.1;
-                margin-bottom: 24px;
-                letter-spacing: -2px;
-                background: linear-gradient(to right, #fff, #94a3b8);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-            }
-
-            p {
-                font-size: 1.25rem;
-                color: #94a3b8;
-                max-width: 600px;
-                line-height: 1.6;
-                margin-bottom: 48px;
-            }
-
-            /* GLASS CARDS */
-            .glass-card {
-                background: rgba(255, 255, 255, 0.03);
-                border: 1px solid rgba(255, 255, 255, 0.05);
-                border-radius: 24px;
-                padding: 40px;
-                backdrop-filter: blur(20px);
-                transition: transform 0.3s ease;
-            }
-            .glass-card:hover {
-                transform: translateY(-5px);
-                border-color: rgba(255, 255, 255, 0.1);
-            }
-
-            /* MEDIA QUERIES */
-            @media (max-width: 768px) {
-                h1 { font-size: 3rem; }
-                p { font-size: 1rem; }
-            }
+            .glass-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; padding: 30px; backdrop-filter: blur(20px); }
         </style>
-
-        <div class="blob-cont">
-            <div class="blob blob-1"></div>
-            <div class="blob blob-2"></div>
-            <div class="blob blob-3"></div>
-        </div>
+        <div class="blob-cont"><div class="blob blob-1"></div><div class="blob blob-2"></div></div>
     """,
         unsafe_allow_html=True,
     )
 
-    # HERO CONTENT
-    # We use Streamlit columns to center the layout perfectly
-    col1, col2, col3 = st.columns([1, 8, 1])
+    col1, col2, col3 = st.columns([1, 6, 1])
     with col2:
         st.markdown(
             """
             <div class="hero-container">
-                <div class="badge">✨ The New Standard for Viral Video</div>
+                <div class="badge">✨ v2.0 Overflow Fix</div>
                 <h1>Turn text into <br> kinetic art.</h1>
-                <p>
-                    Stop editing word-by-word. TypeHype automatically syncs your script, 
-                    generates AI voiceovers, and applies the "bionic reading" effect 
-                    used by top creators.
-                </p>
+                <p>Stop editing word-by-word. TypeHype automatically syncs your script and adjusts layouts instantly.</p>
             </div>
         """,
             unsafe_allow_html=True,
         )
 
-        # THE CTA BUTTON
-        # We place a native Streamlit button here but style the area around it
-        # This button triggers the Python state change
         c1, c2, c3 = st.columns([1, 1, 1])
         with c2:
             if st.button("Launch Studio 🚀", type="primary", use_container_width=True):
                 go_to_tool()
                 st.rerun()
 
-    # FEATURES GRID
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
-    f1, f2, f3 = st.columns(3)
-    with f1:
-        st.markdown(
-            """
-            <div class="glass-card">
-                <h3>⚡ Zero Editing</h3>
-                <p style="font-size: 0.9rem; margin-bottom: 0;">AI handles the timing. You just write the script. No timeline, no keyframes.</p>
-            </div>
-        """,
-            unsafe_allow_html=True,
-        )
-    with f2:
-        st.markdown(
-            """
-            <div class="glass-card">
-                <h3>🎨 Bionic Focus</h3>
-                <p style="font-size: 0.9rem; margin-bottom: 0;">Our "Dim/Bright" opacity engine forces viewers to read along, boosting retention.</p>
-            </div>
-        """,
-            unsafe_allow_html=True,
-        )
-    with f3:
-        st.markdown(
-            """
-            <div class="glass-card">
-                <h3>📱 Multi-Format</h3>
-                <p style="font-size: 0.9rem; margin-bottom: 0;">Export for TikTok (9:16) or LinkedIn/MacBook (16:10) in seconds.</p>
-            </div>
-        """,
-            unsafe_allow_html=True,
-        )
+
+# --- 2. THE TOOL LOGIC (FIXED) ---
 
 
-# --- 2. THE TOOL LOGIC (EXISTING PYTHON CODE) ---
-# Helper: Create PIL Text Clip (Bypasses ImageMagick)
-def create_pil_text_clip(text, font_path, font_size, color, size):
-    img = Image.new("RGBA", size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
+def get_font_object(font_path, size):
     try:
-        font = ImageFont.truetype(font_path, font_size)
+        return ImageFont.truetype(font_path, size)
     except IOError:
-        font = ImageFont.load_default()
+        return ImageFont.load_default()
+
+
+def measure_text_width(text, font):
+    img = Image.new("RGBA", (1, 1))
+    draw = ImageDraw.Draw(img)
     left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
-    text_w, text_h = right - left, bottom - top
-    txt_img = Image.new("RGBA", (text_w + 20, text_h + 20), (0, 0, 0, 0))
+    return right - left
+
+
+def create_pil_text_clip(text, font_path, font_size, color):
+    """Generates the image for a single word."""
+    font = get_font_object(font_path, font_size)
+    img = Image.new("RGBA", (1, 1))
+    draw = ImageDraw.Draw(img)
+
+    # Measure
+    left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
+    text_w = right - left
+    text_h = bottom - top
+
+    # Draw (add padding to prevent cutting off ascenders/descenders)
+    # 1.3 height factor is safer for fonts like Anatoleum
+    final_h = int(text_h * 1.5)
+    final_w = int(text_w * 1.1)
+
+    txt_img = Image.new("RGBA", (final_w, final_h), (0, 0, 0, 0))
     draw_txt = ImageDraw.Draw(txt_img)
-    draw_txt.text((0, 0), text, font=font, fill=color)
-    return mp.ImageClip(np.array(txt_img))
+    # Center vertically
+    y_pos = (final_h - text_h) // 2
+    draw_txt.text((0, y_pos), text, font=font, fill=color)
+
+    return mp.ImageClip(np.array(txt_img)), final_w, final_h
 
 
 def generate_video(text_input, font_path):
@@ -440,63 +335,107 @@ def generate_video(text_input, font_path):
         return None
     SECONDS_PER_WORD = audio_duration / len(words)
 
-    VIDEO_SIZE = (1920, 1200)
-    FONT_SIZE = 130
+    # --- LAYOUT CONSTANTS ---
+    VIDEO_W, VIDEO_H = 1920, 1200
+    BASE_FONT_SIZE = 130
+    LEFT_MARGIN = 150
+    RIGHT_MARGIN = 150
+    MAX_TEXT_WIDTH = VIDEO_W - (LEFT_MARGIN + RIGHT_MARGIN)
+
     WORD_GAP = 35
-    LINE_GAP = 50
+    LINE_GAP = 40
     WORDS_PER_LINE = 3
     LINES_PER_SCREEN = 4
-    WORDS_PER_SCREEN = 12
-    LEFT_MARGIN = 150
+    WORDS_PER_SCREEN = WORDS_PER_LINE * LINES_PER_SCREEN
 
     final_clips = []
     progress_bar = st.progress(0)
     total_chunks = len(range(0, len(words), WORDS_PER_SCREEN))
 
-    bg_clip = mp.ColorClip(size=VIDEO_SIZE, color=(0, 0, 0)).set_duration(
-        0.1
-    )  # Placeholder
-
+    # --- RENDER LOOP ---
     for idx, chunk_index in enumerate(range(0, len(words), WORDS_PER_SCREEN)):
         batch_words = words[chunk_index : chunk_index + WORDS_PER_SCREEN]
         batch_duration = len(batch_words) * SECONDS_PER_WORD
 
         screen_clips = []
-        bg_clip = mp.ColorClip(size=VIDEO_SIZE, color=(0, 0, 0)).set_duration(
+        bg_clip = mp.ColorClip(size=(VIDEO_W, VIDEO_H), color=(0, 0, 0)).set_duration(
             batch_duration
         )
         screen_clips.append(bg_clip)
 
-        total_block_height = (LINES_PER_SCREEN * (FONT_SIZE * 1.2)) + (
-            (LINES_PER_SCREEN - 1) * LINE_GAP
-        )
-        start_y = (VIDEO_SIZE[1] - total_block_height) / 2
+        # 1. CALCULATE LAYOUT DYNAMICALLY
+        # We need to know the total height of this block to center it vertically.
+        # But font size might change per line! So we must calculate first.
+
+        lines_data = []  # Stores list of (word_text, clip, w, h) for each line
+        total_block_height = 0
 
         for line_idx in range(0, len(batch_words), WORDS_PER_LINE):
             line_words = batch_words[line_idx : line_idx + WORDS_PER_LINE]
+
+            # --- OVERFLOW PROTECTION ALGORITHM ---
+            # Try with BASE_FONT_SIZE. If too wide, shrink.
+            current_font_size = BASE_FONT_SIZE
+            line_fits = False
+
+            while not line_fits and current_font_size > 40:
+                # Measure total width of this line
+                temp_font = get_font_object(font_path, current_font_size)
+                total_w = 0
+                for w in line_words:
+                    total_w += measure_text_width(w, temp_font)
+                total_w += (len(line_words) - 1) * WORD_GAP
+
+                if total_w < MAX_TEXT_WIDTH:
+                    line_fits = True
+                else:
+                    current_font_size -= 10  # Shrink step
+
+            # Now generate clips with the safe font size
+            line_clips = []
+            max_h = 0
+            for w in line_words:
+                clip, w_w, w_h = create_pil_text_clip(
+                    w, font_path, current_font_size, "white"
+                )
+                line_clips.append((w, clip, w_w, w_h))
+                if w_h > max_h:
+                    max_h = w_h
+
+            lines_data.append(
+                {"clips": line_clips, "height": max_h}  # List of (text, clip, w, h)
+            )
+            total_block_height += max_h
+
+        # Add gaps to total height
+        if len(lines_data) > 1:
+            total_block_height += (len(lines_data) - 1) * LINE_GAP
+
+        # 2. RENDER THE CLIPS
+        start_y = (VIDEO_H - total_block_height) / 2
+
+        current_y = start_y
+        global_word_idx = 0  # Track which word we are on in this batch
+
+        for line_data in lines_data:
             current_x = LEFT_MARGIN
 
-            word_clips_data = []
-            for w in line_words:
-                clip = create_pil_text_clip(
-                    w, font_path, FONT_SIZE, "white", VIDEO_SIZE
-                )
-                word_clips_data.append((w, clip, clip.w, clip.h))
+            for w_text, clip, w_w, w_h in line_data["clips"]:
+                # Timing
+                light_up_time = global_word_idx * SECONDS_PER_WORD
 
-            for i, (word_text, clip, w_width, w_height) in enumerate(word_clips_data):
-                word_batch_index = line_idx + i
-                light_up_time = word_batch_index * SECONDS_PER_WORD
-                pos_y = start_y + (line_idx / WORDS_PER_LINE) * (w_height + LINE_GAP)
-
+                # Dim Clip
                 dim_clip = (
-                    clip.set_position((current_x, pos_y))
+                    clip.set_position((current_x, current_y))
                     .set_duration(batch_duration)
                     .set_opacity(0.25)
                 )
+
+                # Bright Clip
                 bright_duration = batch_duration - light_up_time
                 if bright_duration > 0:
                     bright_clip = (
-                        clip.set_position((current_x, pos_y))
+                        clip.set_position((current_x, current_y))
                         .set_start(light_up_time)
                         .set_duration(bright_duration)
                     )
@@ -505,12 +444,16 @@ def generate_video(text_input, font_path):
                 else:
                     screen_clips.append(dim_clip)
 
-                current_x += w_width + WORD_GAP
+                current_x += w_w + WORD_GAP
+                global_word_idx += 1
+
+            current_y += line_data["height"] + LINE_GAP
 
         screen_composite = mp.CompositeVideoClip(
-            screen_clips, size=VIDEO_SIZE
+            screen_clips, size=(VIDEO_W, VIDEO_H)
         ).set_duration(batch_duration)
         final_clips.append(screen_composite)
+
         if total_chunks > 0:
             progress_bar.progress(min((idx + 1) / total_chunks, 1.0))
 
@@ -523,15 +466,21 @@ def generate_video(text_input, font_path):
 
 
 def render_tool_page():
-    # Back Button
-    if st.button("← Back to Home"):
-        go_to_home()
-        st.rerun()
+    st.markdown(
+        """<style>.stApp { background-color: #0e0e0e; } [data-testid="stSidebar"] { display: none; }</style>""",
+        unsafe_allow_html=True,
+    )
 
-    st.markdown("## 🎥 Studio")
+    col_back, col_title = st.columns([1, 10])
+    with col_back:
+        if st.button("←", help="Back to Home"):
+            go_to_home()
+            st.rerun()
+    with col_title:
+        st.markdown("## 🎥 Studio")
+    st.divider()
 
     col1, col2 = st.columns([2, 1])
-
     with col1:
         default_text = "Wealth is not about having a lot of money; it is about having a lot of options.\nSpecific knowledge cannot be taught, but it can be learned."
         user_text = st.text_area("Script", value=default_text, height=300)
@@ -539,8 +488,6 @@ def render_tool_page():
     with col2:
         st.markdown("### Settings")
         st.info("Aspect Ratio: 16:10 (MacBook)")
-        st.info("Voice: Google US English")
-
         repo_font_path = "Anatoleum.ttf"
         if os.path.exists(repo_font_path):
             st.success(f"Font: {repo_font_path}")
@@ -551,7 +498,7 @@ def render_tool_page():
 
         if st.button("🚀 Generate Video", type="primary", use_container_width=True):
             if user_text:
-                with st.spinner("Rendering Kinetic Typography..."):
+                with st.spinner("Rendering (Auto-Scaling)..."):
                     try:
                         output_file = generate_video(user_text, active_font)
                         st.session_state["last_video"] = output_file
@@ -560,18 +507,20 @@ def render_tool_page():
             else:
                 st.warning("Please enter some text.")
 
-    # Show Video Result
     if "last_video" in st.session_state and st.session_state["last_video"]:
         st.divider()
         st.markdown("### Result")
-        st.video(st.session_state["last_video"])
-        with open(st.session_state["last_video"], "rb") as file:
-            st.download_button(
-                "Download MP4",
-                data=file,
-                file_name="typehype_video.mp4",
-                mime="video/mp4",
-            )
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            st.video(st.session_state["last_video"])
+            with open(st.session_state["last_video"], "rb") as file:
+                st.download_button(
+                    "Download MP4",
+                    data=file,
+                    file_name="typehype_video.mp4",
+                    mime="video/mp4",
+                    use_container_width=True,
+                )
 
 
 # --- ROUTER ---
