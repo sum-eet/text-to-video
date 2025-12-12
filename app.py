@@ -5,6 +5,7 @@ import moviepy.editor as mp
 from gtts import gTTS
 import tempfile
 from PIL import Image, ImageDraw, ImageFont
+from proglog import ProgressBarLogger  # NEW: Required for real-time progress
 
 # --- PAGE CONFIG ---
 st.set_page_config(
@@ -13,6 +14,44 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+
+# --- CUSTOM LOGGER FOR REAL-TIME PROGRESS ---
+class StreamlitLogger(ProgressBarLogger):
+    """
+    Hooks into MoviePy's internal logger to update Streamlit's progress bar
+    based on the ACTUAL frames being rendered.
+    """
+
+    def __init__(self, st_progress_bar, status_text, start_ratio=0.0, end_ratio=1.0):
+        super().__init__(
+            init_state=None,
+            bars=None,
+            ignored_bars=None,
+            logged_bars="all",
+            min_time_interval=0,
+            ignore_bars_under=0,
+        )
+        self.st_progress_bar = st_progress_bar
+        self.status_text = status_text
+        self.start_ratio = start_ratio
+        self.end_ratio = end_ratio
+
+    def bars_callback(self, bar, attr, value, old_value=None):
+        # 't' is the bar identifier for time/frames in MoviePy
+        if bar == "t":
+            total = self.bars[bar]["total"]
+            if total > 0:
+                percentage = value / total
+                # Map the MoviePy percentage (0-1) to our reserved Streamlit range (e.g. 20%-100%)
+                current_st_pct = self.start_ratio + (
+                    percentage * (self.end_ratio - self.start_ratio)
+                )
+
+                # Update UI
+                self.st_progress_bar.progress(min(current_st_pct, 1.0))
+                self.status_text.text(f"Rendering: {int(percentage * 100)}% complete")
+
 
 # --- NAVIGATION STATE ---
 if "page" not in st.session_state:
@@ -27,7 +66,7 @@ def go_to_home():
     st.session_state.page = "home"
 
 
-# --- 1. LANDING PAGE (JIGGYMAX BRANDING) ---
+# --- 1. LANDING PAGE ---
 def render_landing_page():
     st.markdown(
         """
@@ -38,7 +77,6 @@ def render_landing_page():
             .block-container {padding: 0; max-width: 100%;}
             body { background-color: #050505; color: white; font-family: 'Inter', sans-serif; }
             
-            /* BACKGROUND ANIMATION */
             .blob-cont { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1; overflow: hidden; background: #050505; }
             .blob { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.6; animation: float 10s infinite ease-in-out; }
             .blob-1 { background: #4f46e5; width: 600px; height: 600px; top: -100px; left: -100px; }
@@ -56,9 +94,6 @@ def render_landing_page():
             p { font-size: 1.25rem; color: #94a3b8; max-width: 600px; margin-bottom: 40px; }
             .badge { background: rgba(255,255,255,0.1); padding: 8px 16px; border-radius: 50px; border: 1px solid rgba(255,255,255,0.2); margin-bottom: 20px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: #a5b4fc; }
             
-            .glass-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; padding: 30px; backdrop-filter: blur(20px); }
-            
-            /* JIGGYMAX FOOTER */
             .custom-footer { width: 100%; padding: 40px 20px; text-align: center; color: #525252; font-size: 0.9rem; border-top: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); }
         </style>
         <div class="blob-cont"><div class="blob blob-1"></div><div class="blob blob-2"></div></div>
@@ -71,9 +106,9 @@ def render_landing_page():
         st.markdown(
             """
             <div class="hero-container">
-                <div class="badge">✨ JIGGYMAX v1.0</div>
+                <div class="badge">✨ JIGGYMAX v2.1</div>
                 <h1>TEXT TO <br> VIDEO.</h1>
-                <p>JIGGYMAX turns boring scripts into viral kinetic typography. <br>Auto-synced. Auto-styled. Ready to ship.</p>
+                <p>JIGGYMAX turns boring scripts into viral kinetic typography. <br>Real-time rendering engine active.</p>
             </div>
         """,
             unsafe_allow_html=True,
@@ -85,18 +120,13 @@ def render_landing_page():
                 go_to_tool()
                 st.rerun()
 
-    # FOOTER
     st.markdown(
-        """
-        <div class="custom-footer">
-            <p>&copy; 2025 JIGGYMAX. All rights reserved.</p>
-        </div>
-    """,
+        """<div class="custom-footer"><p>&copy; 2025 JIGGYMAX.</p></div>""",
         unsafe_allow_html=True,
     )
 
 
-# --- 2. THE TOOL LOGIC (REALISTIC LOADER) ---
+# --- 2. THE TOOL LOGIC ---
 
 
 def get_font_object(font_path, size):
@@ -118,8 +148,7 @@ def create_pil_text_clip(text, font_path, font_size, color):
     img = Image.new("RGBA", (1, 1))
     draw = ImageDraw.Draw(img)
     left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
-    text_w = right - left
-    text_h = bottom - top
+    text_w, text_h = right - left, bottom - top
     final_h = int(text_h * 1.5)
     final_w = int(text_w * 1.1)
     txt_img = Image.new("RGBA", (final_w, final_h), (0, 0, 0, 0))
@@ -130,6 +159,14 @@ def create_pil_text_clip(text, font_path, font_size, color):
 
 
 def generate_video(text_input, font_path):
+    # PROGRESS: Start
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    # PHASE 1: AUDIO (0-10%)
+    status_text.text("Synthesizing Audio...")
+    progress_bar.progress(0.05)
+
     temp_dir = tempfile.mkdtemp()
     audio_path = os.path.join(temp_dir, "temp_audio.mp3")
     output_path = os.path.join(temp_dir, "output_video.mp4")
@@ -145,6 +182,11 @@ def generate_video(text_input, font_path):
         return None
     SECONDS_PER_WORD = audio_duration / len(words)
 
+    progress_bar.progress(0.10)
+
+    # PHASE 2: LAYOUT CALCULATION (10-20%)
+    status_text.text("Calculating Responsive Layout...")
+
     VIDEO_W, VIDEO_H = 1920, 1200
     BASE_FONT_SIZE = 130
     LEFT_MARGIN = 150
@@ -158,20 +200,13 @@ def generate_video(text_input, font_path):
 
     final_clips = []
 
-    # --- LOADER UI SETUP ---
-    # We use a progress bar and a status text that updates
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+    # Create Layouts
+    chunks = list(range(0, len(words), WORDS_PER_SCREEN))
+    total_chunks = len(chunks)
 
-    total_chunks = len(range(0, len(words), WORDS_PER_SCREEN))
-
-    # --- RENDER LOOP ---
-    for idx, chunk_index in enumerate(range(0, len(words), WORDS_PER_SCREEN)):
+    for idx, chunk_index in enumerate(chunks):
         batch_words = words[chunk_index : chunk_index + WORDS_PER_SCREEN]
         batch_duration = len(batch_words) * SECONDS_PER_WORD
-
-        # Update Status
-        status_text.text(f"Generating Scene {idx+1} of {total_chunks}...")
 
         screen_clips = []
         bg_clip = mp.ColorClip(size=(VIDEO_W, VIDEO_H), color=(0, 0, 0)).set_duration(
@@ -179,6 +214,7 @@ def generate_video(text_input, font_path):
         )
         screen_clips.append(bg_clip)
 
+        # Dynamic Scaling Logic
         lines_data = []
         total_block_height = 0
 
@@ -245,33 +281,30 @@ def generate_video(text_input, font_path):
         ).set_duration(batch_duration)
         final_clips.append(screen_composite)
 
-        # REALISTIC PROGRESS:
-        # Map the frame generation loop from 0% to 80% (0.0 -> 0.8)
-        # We leave the last 20% for the actual encoding
-        loop_progress = (idx + 1) / total_chunks
-        scaled_progress = min(loop_progress * 0.8, 0.8)
-        progress_bar.progress(scaled_progress)
+        # Incremental update during prep phase (10% -> 20%)
+        prep_progress = 0.10 + ((idx + 1) / total_chunks * 0.10)
+        progress_bar.progress(prep_progress)
 
     if final_clips:
-        # --- ENCODING PHASE ---
-        # This is where the app used to "freeze" at 100%.
-        # Now it sits at 80% and moves to 90%, giving feedback.
-        status_text.text("Merging scenes and syncing audio...")
-        progress_bar.progress(0.85)
+        # PHASE 3: RENDERING (20% - 100%)
+        # This is where we attach our custom logger
+        status_text.text("Rendering Video Frames (This is the heavy part)...")
 
         final_video = mp.concatenate_videoclips(final_clips)
         final_video = final_video.set_audio(audio_clip)
 
-        status_text.text("Encoding final MP4 (This takes a few seconds)...")
-        progress_bar.progress(0.90)
+        # Initialize our custom logger
+        # It maps the internal rendering progress (0-1) to Streamlit's 0.20-1.00 range
+        logger = StreamlitLogger(
+            progress_bar, status_text, start_ratio=0.20, end_ratio=1.0
+        )
 
+        # We pass the logger to write_videofile
         final_video.write_videofile(
-            output_path, fps=24, audio_codec="aac", logger=None
-        )  # logger=None to keep console clean
+            output_path, fps=24, audio_codec="aac", logger=logger  # <--- THE MAGIC HOOK
+        )
 
-        # DONE
-        progress_bar.progress(1.0)
-        status_text.success("Complete!")
+        status_text.success("Generation Complete!")
         return output_path
     return None
 
@@ -309,7 +342,6 @@ def render_tool_page():
 
         if st.button("🚀 Generate Video", type="primary", use_container_width=True):
             if user_text:
-                # We remove st.spinner here because we have a custom progress bar now
                 try:
                     output_file = generate_video(user_text, active_font)
                     st.session_state["last_video"] = output_file
