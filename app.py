@@ -51,7 +51,7 @@ def get_font_object(font_path, size):
         return ImageFont.load_default()
 
 
-# --- CUSTOM LOGGER ---
+# --- LOGGER ---
 class StreamlitLogger(ProgressBarLogger):
     def __init__(self, bar, status):
         super().__init__(
@@ -74,43 +74,39 @@ class StreamlitLogger(ProgressBarLogger):
                 self.status.text(f"Rendering: {int(pct * 100)}%")
 
 
-# --- GEOMETRY ENGINE (FIXED) ---
+# --- GEOMETRY ENGINE V3 (CENTERED ANCHOR) ---
 
 
 def create_pil_text_clip(text, font_path, font_size, color):
     """
-    Creates a perfectly sized text image with safety padding to prevent cropping.
+    Creates a clip with ample padding but returns exact spacing metrics.
     """
     font = get_font_object(font_path, font_size)
 
-    # 1. Measure precise bounding box
-    # We use a dummy image to measure
-    dummy = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
-    left, top, right, bottom = dummy.textbbox((0, 0), text, font=font)
+    # 1. Get Typographic Advance (The exact width the cursor should move)
+    advance_width = font.getlength(text)
 
-    text_w = right - left
-    text_h = bottom - top
+    # 2. Get Visual Bounding Box (The exact ink pixels)
+    bbox = font.getbbox(text)
+    visual_w = bbox[2] - bbox[0]
+    visual_h = bbox[3] - bbox[1]
 
-    # 2. Add SAFETY PADDING (Critical for the "cropping" fix)
-    # We add 20% padding to width and 50% to height to handle accents/descenders
-    w_padding = int(text_w * 0.2) + 20
-    h_padding = int(text_h * 0.5) + 20
+    # 3. Canvas Size (Generous padding to prevent ANY cropping)
+    # We make the canvas significantly larger than the text
+    canvas_w = int(max(advance_width, visual_w) * 1.5) + 40
+    canvas_h = int(font_size * 2.0) + 40
 
-    final_w = text_w + w_padding
-    final_h = text_h + h_padding
-
-    img = Image.new("RGBA", (final_w, final_h), (0, 0, 0, 0))
+    img = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # 3. Draw Centered
-    # We explicitly calculate the center position
-    x_pos = (final_w - text_w) / 2 - left
-    y_pos = (final_h - text_h) / 2 - top
+    # 4. Draw Center-Middle (Anchor 'mm')
+    # This places the text exactly in the middle of our huge canvas
+    draw.text((canvas_w / 2, canvas_h / 2), text, font=font, fill=color, anchor="mm")
 
-    draw.text((x_pos, y_pos), text, font=font, fill=color)
-
-    # Return clip and the VISUAL width (not the image width) for spacing
-    return mp.ImageClip(np.array(img)), final_w, final_h
+    # 5. Return Clip + Metrics
+    # canvas_w is the image width
+    # advance_width is how much we should move the cursor later
+    return mp.ImageClip(np.array(img)), canvas_w, advance_width
 
 
 def generate_video(text_input, font_path, use_voice):
@@ -144,16 +140,13 @@ def generate_video(text_input, font_path, use_voice):
     VIDEO_W, VIDEO_H = 1920, 1200
     BASE_FONT_SIZE = 130
     MARGIN_X = 150
-    # Safe Width for Text (Video Width - Margins)
+    # Safe area for text
     SAFE_WIDTH = VIDEO_W - (MARGIN_X * 2)
 
-    WORD_GAP = 30
-    # FIXED LINE HEIGHT: This prevents the "overlap" bug.
-    # Lines are now spaced by font size, not by word height.
-    LINE_SPACING_FACTOR = 1.4
+    WORD_GAP = 35
+    LINE_SPACING_FACTOR = 1.6  # 1.6x Font Size for cleaner vertical space
 
     WORDS_PER_LINE = 3
-    LINES_PER_SCREEN = 4
     WORDS_PER_SCREEN = 12
 
     final_clips = []
@@ -170,49 +163,42 @@ def generate_video(text_input, font_path, use_voice):
             )
         )
 
-        # --- 1. CALCULATE SCALING ---
-        # We determine the Font Size for this ENTIRE SCREEN first.
-        # This prevents one huge word from breaking the layout.
-
+        # --- 1. DYNAMIC FONT SCALING ---
         current_font_size = BASE_FONT_SIZE
         screen_fits = False
 
+        # We need to recreate the font object inside the loop to measure correctly
         while not screen_fits and current_font_size > 40:
             screen_fits = True
             temp_font = get_font_object(font_path, current_font_size)
 
-            # Check every line in this batch
             for i in range(0, len(batch_words), WORDS_PER_LINE):
                 line = batch_words[i : i + WORDS_PER_LINE]
-                # Measure line width
                 total_w = 0
                 for w in line:
-                    # Use getlength for accurate horizontal measurement
                     total_w += temp_font.getlength(w)
                 total_w += (len(line) - 1) * WORD_GAP
 
                 if total_w > SAFE_WIDTH:
                     screen_fits = False
                     current_font_size -= 10
-                    break  # Restart with smaller font
+                    break
 
-        # --- 2. GENERATE CLIPS ---
+        # --- 2. GENERATE CLIPS & LAYOUT ---
         lines_data = []
-        # Calculate fixed line height based on the chosen font size
         FIXED_LINE_HEIGHT = current_font_size * LINE_SPACING_FACTOR
 
         for i in range(0, len(batch_words), WORDS_PER_LINE):
             line_words = batch_words[i : i + WORDS_PER_LINE]
             l_clips = []
             for w in line_words:
-                clip, w_w, w_h = create_pil_text_clip(
+                clip, canvas_w, advance_w = create_pil_text_clip(
                     w, font_path, current_font_size, "white"
                 )
-                l_clips.append((clip, w_w))
+                l_clips.append((clip, canvas_w, advance_w))
             lines_data.append(l_clips)
 
         # --- 3. POSITIONING ---
-        # Center the block vertically based on fixed line heights
         total_block_h = len(lines_data) * FIXED_LINE_HEIGHT
         start_y = (VIDEO_H - total_block_h) / 2
 
@@ -222,35 +208,51 @@ def generate_video(text_input, font_path, use_voice):
         for line in lines_data:
             current_x = MARGIN_X
 
-            for clip, w_w in line:
-                # Timing
+            for clip, canvas_w, advance_w in line:
                 start = global_w_idx * sec_per_word
 
-                # Dimmed version (Always visible)
+                # --- CENTERING LOGIC (CRITICAL FIX) ---
+                # We placed the text in the exact middle of the canvas (canvas_w/2)
+                # We want that text-middle to align with the center of our current cursor position
+                # Visual Left = current_x
+                # Visual Center = current_x + (advance_w / 2)
+                # Clip Left = Visual Center - (canvas_w / 2)
+
+                # Simplified:
+                # We want the text to START at current_x.
+                # The text starts at (canvas_w - advance_w) / 2 inside the image (roughly)
+                # So we shift the image left by that amount.
+
+                # Using the center-to-center method is safer:
+                visual_center_x = current_x + (advance_w / 2)
+                clip_x = visual_center_x - (canvas_w / 2)
+
+                # Center Vertically on the line
+                line_center_y = current_y + (FIXED_LINE_HEIGHT / 2)
+                clip_y = line_center_y - (clip.h / 2)
+
+                # Dimmed
                 dim = (
-                    clip.set_position((current_x, current_y))
+                    clip.set_position((clip_x, clip_y))
                     .set_duration(batch_dur)
                     .set_opacity(0.25)
                 )
                 screen_clips.append(dim)
 
-                # Bright version (Timed)
+                # Bright
                 dur = batch_dur - start
                 if dur > 0:
                     bright = (
-                        clip.set_position((current_x, current_y))
+                        clip.set_position((clip_x, clip_y))
                         .set_start(start)
                         .set_duration(dur)
                     )
                     screen_clips.append(bright)
 
-                # Advance X using the clip's visual width
-                # Note: We subtract a bit of the safety padding we added earlier for tighter visual spacing
-                visual_width = w_w * 0.85
-                current_x += visual_width + WORD_GAP
+                # Advance cursor by the REAL typographic width
+                current_x += advance_w + WORD_GAP
                 global_w_idx += 1
 
-            # Advance Y by fixed amount (Fixes overlapping)
             current_y += FIXED_LINE_HEIGHT
 
         comp = mp.CompositeVideoClip(
