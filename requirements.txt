@@ -3,3 +3,5 @@ moviepy==1.0.3
 gTTS
 numpy<2.0.0
 Pillow
+requests
+proglog
