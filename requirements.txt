@@ -1,7 +1,10 @@
 streamlit
 moviepy==1.0.3
-gTTS
+gTTS==2.5.1
 numpy<2.0.0
-Pillow
+Pillow==10.3.0
 requests
 proglog
+decorator==4.4.2
+imageio==2.4.1
+imageio-ffmpeg==0.4.7
