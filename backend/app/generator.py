@@ -1,23 +1,70 @@
 import os
+import requests
 import numpy as np
 import moviepy.editor as mp
 from gtts import gTTS
 import tempfile
 from PIL import Image, ImageDraw, ImageFont
 
-# --- CONFIGURATION ---
-FONT_PATH = "/code/Anatoleum.ttf"  # Path inside Docker
-if not os.path.exists(FONT_PATH):
-    FONT_PATH = "arial.ttf"  # Fallback
+# --- FONT MANAGEMENT ---
+FONT_DIR = "/code/fonts"
+os.makedirs(FONT_DIR, exist_ok=True)
+
+# Map "Friendly Names" to "Real Files" & "Download URLs"
+FONT_MAP = {
+    "Anatoleum": {
+        "file": "Anatoleum.ttf",
+        "source": "local",  # Expects you uploaded it
+    },
+    "Google Sans": {
+        "file": "Roboto-Bold.ttf",  # Using Roboto as free alternative
+        "url": "https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Bold.ttf",
+    },
+    "Arial": {
+        "file": "Arimo-Bold.ttf",  # Arimo is the Open Source Arial
+        "url": "https://github.com/googlefonts/arimo/raw/main/fonts/ttf/Arimo-Bold.ttf",
+    },
+}
 
 
-def get_font_object(size):
+def get_font_path(font_name):
+    """Returns the path to the font file. Downloads it if missing."""
+    data = FONT_MAP.get(font_name, FONT_MAP["Arial"])
+    filename = data["file"]
+
+    # 1. Check Downloaded Folder
+    dest_path = os.path.join(FONT_DIR, filename)
+    if os.path.exists(dest_path):
+        return dest_path
+
+    # 2. Check Root (Local Uploads)
+    local_path = os.path.join("/code", filename)
+    if os.path.exists(local_path):
+        return local_path
+
+    # 3. Download if missing
+    if "url" in data:
+        print(f"Downloading {font_name}...")
+        try:
+            response = requests.get(data["url"], timeout=15)
+            with open(dest_path, "wb") as f:
+                f.write(response.content)
+            return dest_path
+        except Exception as e:
+            print(f"Failed to download font: {e}")
+
+    return "arial.ttf"  # Fallback
+
+
+def get_font_object(font_name, size):
+    path = get_font_path(font_name)
     try:
-        return ImageFont.truetype(FONT_PATH, size)
+        return ImageFont.truetype(path, size)
     except IOError:
         return ImageFont.load_default()
 
 
+# --- HELPER FUNCTIONS ---
 def measure_text_width(text, font):
     img = Image.new("RGBA", (1, 1))
     draw = ImageDraw.Draw(img)
@@ -25,8 +72,8 @@ def measure_text_width(text, font):
     return right - left
 
 
-def create_pil_text_clip(text, font_size, color):
-    font = get_font_object(font_size)
+def create_pil_text_clip(text, font_name, font_size, color):
+    font = get_font_object(font_name, font_size)
     img = Image.new("RGBA", (1, 1))
     draw = ImageDraw.Draw(img)
     left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
@@ -42,26 +89,27 @@ def create_pil_text_clip(text, font_size, color):
     return mp.ImageClip(np.array(txt_img)), final_w, final_h
 
 
-def render_jiggy_video(text_input: str, job_id: str):
-    """
-    Generates a video and returns the path to the file.
-    """
+def render_jiggy_video(text_input: str, font_choice: str, use_voice: bool, job_id: str):
     # 1. Setup Paths
     output_filename = f"{job_id}.mp4"
     output_path = os.path.join("/tmp/jiggy_videos", output_filename)
     temp_audio_path = os.path.join("/tmp/jiggy_videos", f"{job_id}.mp3")
 
-    # 2. Audio Generation
     clean_text = text_input.replace("\n", " ").strip()
-    tts = gTTS(clean_text, lang="en")
-    tts.save(temp_audio_path)
-
-    audio_clip = mp.AudioFileClip(temp_audio_path)
-    audio_duration = audio_clip.duration
     words = clean_text.split()
     if not words:
         return None
-    SECONDS_PER_WORD = audio_duration / len(words)
+
+    # 2. Audio Logic
+    if use_voice:
+        tts = gTTS(clean_text, lang="en")
+        tts.save(temp_audio_path)
+        audio_clip = mp.AudioFileClip(temp_audio_path)
+        audio_duration = audio_clip.duration
+        SECONDS_PER_WORD = audio_duration / len(words)
+    else:
+        audio_clip = None
+        SECONDS_PER_WORD = 0.4  # Silent speed
 
     # 3. Layout Constants
     VIDEO_W, VIDEO_H = 1920, 1200
@@ -73,7 +121,7 @@ def render_jiggy_video(text_input: str, job_id: str):
     LINE_GAP = 40
     WORDS_PER_LINE = 3
     LINES_PER_SCREEN = 4
-    WORDS_PER_SCREEN = 12
+    WORDS_PER_SCREEN = WORDS_PER_LINE * LINES_PER_SCREEN
 
     final_clips = []
 
@@ -100,7 +148,7 @@ def render_jiggy_video(text_input: str, job_id: str):
             line_fits = False
 
             while not line_fits and current_font_size > 40:
-                temp_font = get_font_object(current_font_size)
+                temp_font = get_font_object(font_choice, current_font_size)
                 total_w = 0
                 for w in line_words:
                     total_w += measure_text_width(w, temp_font)
@@ -113,7 +161,9 @@ def render_jiggy_video(text_input: str, job_id: str):
             line_clips = []
             max_h = 0
             for w in line_words:
-                clip, w_w, w_h = create_pil_text_clip(w, current_font_size, "white")
+                clip, w_w, w_h = create_pil_text_clip(
+                    w, font_choice, current_font_size, "white"
+                )
                 line_clips.append((w, clip, w_w, w_h))
                 if w_h > max_h:
                     max_h = w_h
@@ -162,15 +212,14 @@ def render_jiggy_video(text_input: str, job_id: str):
     # 5. Final Export
     if final_clips:
         final_video = mp.concatenate_videoclips(final_clips)
-        final_video = final_video.set_audio(audio_clip)
+        if audio_clip:
+            final_video = final_video.set_audio(audio_clip)
 
         # Write file
-        final_video.write_videofile(
-            output_path, fps=24, audio_codec="aac", logger=None  # Silence logs
-        )
+        final_video.write_videofile(output_path, fps=24, audio_codec="aac", logger=None)
 
-        # Cleanup Audio
-        if os.path.exists(temp_audio_path):
+        # Cleanup
+        if use_voice and os.path.exists(temp_audio_path):
             os.remove(temp_audio_path)
 
         return output_path
