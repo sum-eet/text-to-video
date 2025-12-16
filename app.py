@@ -8,6 +8,15 @@ import tempfile
 from PIL import Image, ImageDraw, ImageFont
 from proglog import ProgressBarLogger
 
+import warnings
+import os
+
+# 1. Suppress the "SyntaxWarning" noise from MoviePy
+warnings.filterwarnings("ignore", category=SyntaxWarning, module="moviepy")
+
+# 2. Fix for ImageMagick (just in case it's still trying to look for it)
+os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
+
 # --- CONFIGURATION ---
 st.set_page_config(page_title="JIGGYMAX Studio", page_icon="⚡", layout="wide")
 
